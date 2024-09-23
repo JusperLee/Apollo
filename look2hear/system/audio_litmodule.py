@@ -158,6 +158,7 @@ class AudioLightningModule(pl.LightningModule):
         )
 
         self.validation_step_outputs.clear()  # free memory
+        torch.cuda.empty_cache()
         
     def test_step(self, batch, batch_nb):
         mixtures, targets = batch
