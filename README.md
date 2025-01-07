@@ -100,12 +100,13 @@ Apollo is developed by the **Look2Hear** at Tsinghua University.
 
 If you use Apollo in your research or project, please cite the following paper:
 
-```
-@article{li2024apollo,
+```bibtex
+@inproceedings{li2025apollo,
   title={Apollo: Band-sequence Modeling for High-Quality Music Restoration in Compressed Audio},
   author={Li, Kai and Luo, Yi},
-  journal={xxxxxx},
-  year={2024}
+  booktitle={IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  year={2025},
+  organization={IEEE}
 }
 ```
 
