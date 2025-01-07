@@ -23,7 +23,7 @@ import look2hear.losses
 from look2hear.utils import RankedLogger, instantiate, print_only
 import warnings
 warnings.filterwarnings("ignore")
-os.environ['WANDB_API_KEY'] = "ca76d47c4da23aa9ceb8788307ab090ef5f5713c"
+
 
 
 def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:

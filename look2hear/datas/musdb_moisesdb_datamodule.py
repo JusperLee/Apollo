@@ -120,7 +120,7 @@ class MusdbMoisesdbDataset(Dataset):
             start = random.randint(0, music_wav.shape[-1] - self.segments)
             ori_wav = music_wav[:, start:start+self.segments]
         
-        codec_wav = codec_simu(ori_wav, sr=self.sr, codec_type=self.codec_type, options=self.codec_options)
+        codec_wav = codec_simu(ori_wav, sr=self.sr, options=self.codec_options)
         
         max_scale = max(ori_wav.abs().max(), codec_wav.abs().max())
         

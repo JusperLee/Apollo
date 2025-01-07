@@ -6,21 +6,21 @@
   <strong>Kai Li<sup>1,2</sup>, Yi Luo<sup>2</sup></strong><br>
     <strong><sup>1</sup>Tsinghua University, Beijing, China</strong><br>
     <strong><sup>2</sup>Tencent AI Lab, Shenzhen, China</strong><br>
-  <a href="#">ArXiv</a> | <a href="https://cslikai.cn/Apollo/">Demo</a>
+  <a href="https://arxiv.org/abs/2409.08514">ArXiv</a> | <a href="https://cslikai.cn/Apollo/">Demo</a>
 
 <p align="center">
   <img src="https://visitor-badge.laobi.icu/badge?page_id=JusperLee.Apollo" alt="访客统计" />
   <img src="https://img.shields.io/github/stars/JusperLee/Apollo?style=social" alt="GitHub stars" />
-  <img alt="Static Badge" src="https://img.shields.io/badge/license-Apache--2.0-blue">
+  <img alt="Static Badge" src="https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey">
 </p>
 
 <p align="center">
 
-# Apollo: Band-sequence Modeling for High-Quality Music Restoration in Compressed Audio
+# Apollo: Band-sequence Modeling for High-Quality Audio Restoration
 
 ## 📖 Abstract
 
-Apollo is a novel music restoration method designed to address distortions and artefacts caused by audio codecs, especially at low bitrates. Operating in the frequency domain, Apollo uses a frequency band-split module, band-sequence modeling, and frequency band reconstruction to restore the audio quality of **MP3-compressed music**. It divides the spectrogram into sub-bands, extracts gain-shape representations, and models both sub-band and temporal information for high-quality audio recovery. Trained with a Generative Adversarial Network (GAN), Apollo outperforms existing SR-GAN models on the **MUSDB18-HQ and MoisesDB** datasets, excelling in complex multi-instrument and vocal scenarios, while maintaining efficiency.
+Audio restoration has become increasingly significant in modern society, not only due to the demand for high-quality auditory experiences enabled by advanced playback devices, but also because the growing capabilities of generative audio models necessitate high-fidelity audio. Typically, audio restoration is defined as a task of predicting undistorted audio from damaged input, often trained using a GAN framework to balance perception and distortion. Since audio degradation is primarily concentrated in mid- and high-frequency ranges, especially due to codecs, a key challenge lies in designing a generator capable of preserving low-frequency information while accurately reconstructing high-quality mid- and high-frequency content. Inspired by recent advancements in high-sample-rate music separation, speech enhancement, and audio codec models, we propose Apollo, a generative model designed for high-sample-rate audio restoration. Apollo employs an explicit **frequency band split module** to model the relationships between different frequency bands, allowing for **more coherent and higher-quality** restored audio. Evaluated on the MUSDB18-HQ and MoisesDB datasets, Apollo consistently outperforms existing SR-GAN models across various bit rates and music genres, particularly excelling in complex scenarios involving mixtures of multiple instruments and vocals. Apollo significantly improves music restoration quality while maintaining computational efficiency.
 
 ## 🔥 News
 
@@ -90,7 +90,11 @@ python inference.py --in_wav=assets/input.wav --out_wav=assets/output.wav
 
 ## License
 
-<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+<a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+
+## Third Party
+
+[Apollo-Colab-Inference](https://github.com/jarredou/Apollo-Colab-Inference)
 
 ## Acknowledgements
 
