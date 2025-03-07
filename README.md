@@ -24,8 +24,9 @@ Audio restoration has become increasingly significant in modern society, not onl
 
 ## 🔥 News
 
+- [2025.03.07] We released the training data preprocessing code on [Apollo-data-preprocess](https://github.com/JusperLee/Apollo-data-preprocess).
 - [2024.09.10] Apollo is now available on [ArXiv](#) and [Demo](https://cslikai.cn/Apollo/).
-- [2024.09.106] Apollo checkpoints and pre-trained models are available for download.
+- [2024.09.10] Apollo checkpoints and pre-trained models are available for download.
 
 ## ⚡️ Installation
 
