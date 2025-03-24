@@ -30,7 +30,7 @@ Audio restoration has become increasingly significant in modern society, not onl
 
 ## ⚡️ Installation
 
-clone the repository
+Clone the repository
 
 ```bash
 git clone https://github.com/JusperLee/Apollo.git && cd Apollo
