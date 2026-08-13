@@ -11,6 +11,8 @@ import look2hear.models
 
 SAMPLE_RATE = 44_100
 DEVICE_CHOICES = ("auto", "cuda", "mps", "cpu")
+OFFICIAL_CHECKPOINT = "JusperLee/Apollo"
+LOCAL_CHECKPOINT_SUFFIXES = {".bin", ".ckpt", ".pt", ".pth", ".safetensors"}
 
 
 def select_device(requested):
@@ -30,24 +32,47 @@ def select_device(requested):
 
 
 def resolve_checkpoint(reference):
-    """Resolve a local checkpoint path or download one from Hugging Face."""
+    """Resolve the official remote checkpoint or an existing local file."""
+    reference = str(reference)
+    if reference == OFFICIAL_CHECKPOINT:
+        return Path(
+            hf_hub_download(
+                repo_id=OFFICIAL_CHECKPOINT, filename="pytorch_model.bin"
+            )
+        )
+
     path = Path(reference).expanduser()
     if path.is_file():
         return path
-    if path.suffix:
-        raise FileNotFoundError(f"Checkpoint not found: {path}")
-    return Path(
-        hf_hub_download(repo_id=reference, filename="pytorch_model.bin")
+    if path.exists():
+        raise IsADirectoryError(f"Checkpoint must be a file, not a directory: {path}")
+    if (
+        path.suffix.lower() in LOCAL_CHECKPOINT_SUFFIXES
+        or path.is_absolute()
+        or reference.startswith(("./", "../", "~/"))
+    ):
+        raise FileNotFoundError(f"Local checkpoint not found: {path}")
+    raise ValueError(
+        "Unsupported checkpoint source. Use JusperLee/Apollo or an existing "
+        "local checkpoint file."
     )
 
 
-def load_audio(file_path, device):
+def load_audio(file_path):
     audio, sample_rate = sf.read(
         file_path, dtype="float32", always_2d=True
     )
+    if sample_rate != SAMPLE_RATE:
+        raise ValueError(
+            f"Apollo expects {SAMPLE_RATE} Hz audio, got {sample_rate} Hz."
+        )
+    if audio.shape[0] == 0 or audio.shape[1] == 0:
+        raise ValueError("Input audio must contain at least one sample and channel.")
+    if not np.isfinite(audio).all():
+        raise ValueError("Input audio contains NaN or infinite values.")
     # SoundFile uses [samples, channels]; Apollo uses [batch, channels, samples].
     audio = torch.from_numpy(np.ascontiguousarray(audio.T)).unsqueeze(0)
-    return audio.to(device), sample_rate
+    return audio, sample_rate
 
 
 def save_audio(file_path, audio, sample_rate):
@@ -62,14 +87,13 @@ def run_inference(input_wav, output_wav, checkpoint, requested_device="auto"):
     output_path = Path(output_wav)
     if input_path.resolve() == output_path.resolve():
         raise ValueError("Input and output paths must be different.")
+    if output_path.exists() and input_path.samefile(output_path):
+        raise ValueError("Input and output paths must not reference the same file.")
 
     device = select_device(requested_device)
+    test_data, sample_rate = load_audio(input_path)
     checkpoint_path = resolve_checkpoint(checkpoint)
-    test_data, sample_rate = load_audio(input_path, device)
-    if sample_rate != SAMPLE_RATE:
-        raise ValueError(
-            f"Apollo expects {SAMPLE_RATE} Hz audio, got {sample_rate} Hz."
-        )
+    test_data = test_data.to(device)
 
     model = look2hear.models.BaseModel.from_pretrain(
         str(checkpoint_path),
@@ -94,8 +118,8 @@ def main():
     )
     parser.add_argument(
         "--checkpoint",
-        default="JusperLee/Apollo",
-        help="Local checkpoint path or Hugging Face repository ID",
+        default=OFFICIAL_CHECKPOINT,
+        help="JusperLee/Apollo or an existing local checkpoint file",
     )
     parser.add_argument(
         "--device",

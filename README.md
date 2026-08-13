@@ -82,11 +82,13 @@ python inference.py \
   --device=auto
 ```
 
-`--device=auto` prefers CUDA, then Apple Silicon MPS, and finally CPU. Use
-`--checkpoint=/path/to/pytorch_model.bin` for an existing local checkpoint;
-otherwise the official `JusperLee/Apollo` checkpoint is downloaded from
-Hugging Face. See [Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS
-setup and current limitations.
+`--device=auto` prefers CUDA, then Apple Silicon MPS, and finally CPU. The
+default downloads the official `JusperLee/Apollo` checkpoint from Hugging Face.
+For a custom checkpoint, `--checkpoint` accepts only an existing local file;
+arbitrary remote repositories are rejected because the upstream checkpoint
+loader deserializes the file with PyTorch. See
+[Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS setup and current
+limitations.
 
 ## 📊 Results
 

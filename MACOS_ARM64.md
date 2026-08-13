@@ -27,8 +27,12 @@ python inference.py \
 ```
 
 If `--checkpoint` is omitted, inference downloads the official
-`JusperLee/Apollo` `pytorch_model.bin` from Hugging Face. The checkpoint used
-for local validation had this SHA-256 digest:
+`JusperLee/Apollo` `pytorch_model.bin` from Hugging Face. Custom checkpoints
+must be existing local files; arbitrary remote repositories are rejected
+because the upstream loader uses PyTorch deserialization. Only use local
+checkpoints from sources you trust. The official checkpoint used for local
+validation had this SHA-256 digest (recorded for reproducibility, not enforced
+as a gate so that future official updates remain possible):
 
 ```text
 99d9af7f1ff20e63c393035513a655392818d66b4d7fc23d658175c1f15e8d76
@@ -41,8 +45,8 @@ and macOS 27.0. These are reference measurements, not performance guarantees:
 
 | Device | End-to-end time | Maximum RSS | Peak memory footprint |
 | --- | ---: | ---: | ---: |
-| MPS | 5.71 s | 408.5 MiB | 5.57 GiB |
-| CPU | 335.79 s | 3.75 GiB | 3.14 GiB |
+| MPS | 5.78 s | 412.0 MiB | 4.83 GiB |
+| CPU | 316.46 s | 3.76 GiB | 3.27 GiB |
 
 Both outputs were stereo, 44.1 kHz, six seconds long, and contained no NaN or
 infinite values. Comparing the float32 CPU and MPS WAV outputs gave a maximum
@@ -60,7 +64,10 @@ correlation of `0.999999991468`. The input SHA-256 remained unchanged:
   the requested accelerator is unavailable.
 - The model and input are moved to the same device. Output is detached and
   moved to CPU before it is written.
-- Apollo expects 44.1 kHz audio. Input and output paths must be different.
+- Apollo validates sample rate, basic shape, and finite samples on CPU before
+  downloading the checkpoint or moving the input to an accelerator.
+- Apollo expects 44.1 kHz audio. Input and output paths must not identify the
+  same file, including through a hard link.
 
 ## Known limitations
 

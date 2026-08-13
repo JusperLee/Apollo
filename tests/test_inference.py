@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -52,6 +53,44 @@ class DeviceSelectionTests(unittest.TestCase):
 
 
 class InferenceTests(unittest.TestCase):
+    def test_official_checkpoint_downloads_from_trusted_repository(self):
+        with mock.patch.object(
+            inference,
+            "hf_hub_download",
+            return_value="/cache/pytorch_model.bin",
+        ) as download:
+            path = inference.resolve_checkpoint(inference.OFFICIAL_CHECKPOINT)
+
+        self.assertEqual(path, Path("/cache/pytorch_model.bin"))
+        download.assert_called_once_with(
+            repo_id=inference.OFFICIAL_CHECKPOINT,
+            filename="pytorch_model.bin",
+        )
+
+    def test_existing_local_checkpoint_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "model.pth"
+            checkpoint.touch()
+            self.assertEqual(inference.resolve_checkpoint(checkpoint), checkpoint)
+
+    def test_arbitrary_hugging_face_repository_is_rejected(self):
+        for reference in ("someone/model", "someone/model.v2"):
+            with self.subTest(reference=reference), mock.patch.object(
+                inference, "hf_hub_download"
+            ) as download:
+                with self.assertRaisesRegex(ValueError, "Unsupported checkpoint"):
+                    inference.resolve_checkpoint(reference)
+                download.assert_not_called()
+
+    def test_missing_local_checkpoint_has_clear_error(self):
+        with self.assertRaisesRegex(FileNotFoundError, "Local checkpoint not found"):
+            inference.resolve_checkpoint("models/missing.pth")
+
+    def test_checkpoint_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(IsADirectoryError, "must be a file"):
+                inference.resolve_checkpoint(directory)
+
     def test_cpu_inference_preserves_input_and_audio_shape(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -94,6 +133,45 @@ class InferenceTests(unittest.TestCase):
         path = Path("same.wav")
         with self.assertRaisesRegex(ValueError, "must be different"):
             inference.run_inference(path, path, "checkpoint.bin", "cpu")
+
+    def test_wrong_sample_rate_fails_before_download_or_device_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.wav"
+            sf.write(input_path, np.zeros((100, 2), dtype=np.float32), 48_000)
+
+            with mock.patch.object(
+                inference, "hf_hub_download"
+            ) as download, mock.patch.object(torch.Tensor, "to") as transfer:
+                with self.assertRaisesRegex(ValueError, "expects 44100 Hz"):
+                    inference.run_inference(
+                        input_path,
+                        root / "output.wav",
+                        inference.OFFICIAL_CHECKPOINT,
+                        "cpu",
+                    )
+                download.assert_not_called()
+                transfer.assert_not_called()
+
+    def test_refuses_hard_link_output_alias(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.wav"
+            output_path = root / "output.wav"
+            sf.write(
+                input_path,
+                np.zeros((100, 2), dtype=np.float32),
+                inference.SAMPLE_RATE,
+            )
+            try:
+                os.link(input_path, output_path)
+            except OSError as error:
+                self.skipTest(f"hard links are unavailable: {error}")
+
+            with self.assertRaisesRegex(ValueError, "same file"):
+                inference.run_inference(
+                    input_path, output_path, "checkpoint.bin", "cpu"
+                )
 
 
 if __name__ == "__main__":
