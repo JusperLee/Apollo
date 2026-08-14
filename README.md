@@ -90,7 +90,28 @@ python inference.py \
 default downloads the official `JusperLee/Apollo` checkpoint from Hugging Face.
 For a custom checkpoint, `--checkpoint` accepts only an existing local file;
 arbitrary remote repositories are rejected because the upstream checkpoint
-loader deserializes the file with PyTorch. See
+loader deserializes the file with PyTorch.
+
+Full-file inference remains the default. For long audio, enable bounded-memory
+inference explicitly:
+
+```bash
+python inference.py \
+  --in_wav=long_input.wav \
+  --out_wav=long_output.wav \
+  --device=auto \
+  --chunk-seconds=6 \
+  --overlap-seconds=1 \
+  --chunk-batch-size=2
+```
+
+`--chunk-batch-size` groups a fixed number of chunks into each model forward
+pass. Its default is `1` for minimum accelerator memory; larger values may
+improve throughput on some devices but use more memory and should be measured
+on the target backend. Normalized linear crossfades preserve the input frame
+count, and the overlap must be no more than half the chunk duration. Chunking
+can change the result relative to full-file inference because the model sees
+less context, so important material should still receive a listening check. See
 [Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS setup and current
 limitations.
 
