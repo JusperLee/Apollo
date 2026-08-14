@@ -162,7 +162,7 @@ def instantiate(config, **kwargs):
         module_path, class_name = config['__target__'].rsplit('.', 1)
         module = importlib.import_module(module_path)
         cls = getattr(module, class_name)
-        # 先處理巢狀設定
+        # 先处理嵌套的配置
         params = {}
         for key, value in config.items():
             if key != '__target__':
@@ -170,9 +170,9 @@ def instantiate(config, **kwargs):
                     params[key] = instantiate(value)
                 else:
                     params[key] = value
-        # 新增額外的關鍵字參數
+        # 添加额外的关键字参数
         params.update(kwargs)
         return cls(**params)
     else:
-        # 對於不包含 '__target__' 的字典，遞迴處理其中每個值
+        # 对于不包含 '__target__' 的字典，递归处理其每个值
         return {k: instantiate(v, **kwargs) if isinstance(v, DictConfig) else v for k, v in config.items()}

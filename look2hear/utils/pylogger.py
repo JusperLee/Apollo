@@ -12,14 +12,14 @@ class RankedLogger(logging.LoggerAdapter):
         name: str = __name__,
         rank_zero_only: bool = False,
         extra: Optional[Mapping[str, object]] = None,
-        log_file: str = "log.txt",  # 新增記錄檔名稱參數
+        log_file: str = "log.txt",  # 添加日志文件名参数
     ) -> None:
         logger = logging.getLogger(name)
 
-        # 設定記錄格式
+        # 设置日志格式
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-        # 新增檔案處理器
+        # 添加文件处理器
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)

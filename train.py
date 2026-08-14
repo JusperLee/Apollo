@@ -129,7 +129,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(args.conf_dir)
     
     os.makedirs(os.path.join(cfg.exp.dir, cfg.exp.name), exist_ok=True)
-    # 將設定儲存至新檔案
+    # 保存配置到新的文件
     OmegaConf.save(cfg, os.path.join(cfg.exp.dir, cfg.exp.name, "config.yaml"))
     
     train(cfg)
