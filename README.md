@@ -9,7 +9,7 @@
   <a href="https://arxiv.org/abs/2409.08514">ArXiv</a> | <a href="https://cslikai.cn/Apollo/">Demo</a>
 
 <p align="center">
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=JusperLee.Apollo" alt="访客统计" />
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=JusperLee.Apollo" alt="訪客統計" />
   <img src="https://img.shields.io/github/stars/JusperLee/Apollo?style=social" alt="GitHub stars" />
   <img alt="Static Badge" src="https://img.shields.io/badge/license-CC%20BY--SA%204.0-lightgrey">
 </p>
