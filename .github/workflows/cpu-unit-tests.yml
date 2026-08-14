@@ -14,6 +14,7 @@ jobs:
         with:
           python-version: "3.10"
           cache: pip
+          cache-dependency-path: requirements-macos-arm64.txt
       - name: Install CPU test dependencies
         run: |
           python -m pip install --upgrade pip
