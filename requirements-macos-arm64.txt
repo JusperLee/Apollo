@@ -1,0 +1,8 @@
+# Native Apple Silicon inference/smoke-test environment.
+# The upstream look2hear.yml is a linux-64 CUDA environment.
+torch==2.11.0
+torchaudio==2.11.0
+numpy==1.26.4
+huggingface-hub==1.27.0
+omegaconf==2.3.0
+soundfile==0.14.0

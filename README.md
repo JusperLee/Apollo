@@ -76,8 +76,19 @@ python train.py --conf_dir=configs/apollo.yml
 To evaluate the Apollo model, run the following command:
 
 ```bash
-python inference.py --in_wav=assets/input.wav --out_wav=assets/output.wav
+python inference.py \
+  --in_wav=asserts/input_wav.wav \
+  --out_wav=output.wav \
+  --device=auto
 ```
+
+`--device=auto` prefers CUDA, then Apple Silicon MPS, and finally CPU. The
+default downloads the official `JusperLee/Apollo` checkpoint from Hugging Face.
+For a custom checkpoint, `--checkpoint` accepts only an existing local file;
+arbitrary remote repositories are rejected because the upstream checkpoint
+loader deserializes the file with PyTorch. See
+[Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS setup and current
+limitations.
 
 ## 📊 Results
 

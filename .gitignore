@@ -1,2 +1,7 @@
 *.pyc
 *.DS_Store
+.venv/
+/models/
+/smoke_test_output/
+/output.wav
+/apollo_*_smoke.wav
