@@ -97,14 +97,17 @@ python inference.py \
   --out_wav=long_output.wav \
   --device=auto \
   --chunk-seconds=6 \
-  --overlap-seconds=1
+  --overlap-seconds=1 \
+  --chunk-batch-size=2
 ```
 
-Chunked inference processes one segment on the selected device at a time and
-uses normalized linear crossfades. The overlap must be no more than half the
-chunk duration, and the output keeps the input frame count. Chunking can change
-the result relative to full-file inference because the model sees less context,
-so important material should still receive a listening check. See
+`--chunk-batch-size` groups a fixed number of chunks into each model forward
+pass. Its default is `1` for minimum accelerator memory; larger values may
+improve throughput on some devices but use more memory and should be measured
+on the target backend. Normalized linear crossfades preserve the input frame
+count, and the overlap must be no more than half the chunk duration. Chunking
+can change the result relative to full-file inference because the model sees
+less context, so important material should still receive a listening check. See
 [Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS setup and current
 limitations.
 

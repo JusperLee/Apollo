@@ -19,11 +19,13 @@ class IdentityModel(torch.nn.Module):
         self.input_device = None
         self.input_devices = []
         self.input_lengths = []
+        self.input_batch_sizes = []
 
     def forward(self, audio):
         self.input_device = audio.device
         self.input_devices.append(audio.device)
         self.input_lengths.append(audio.shape[-1])
+        self.input_batch_sizes.append(audio.shape[0])
         return audio
 
 
@@ -166,6 +168,7 @@ class InferenceTests(unittest.TestCase):
                     requested_device="cpu",
                     chunk_seconds=0.5,
                     overlap_seconds=0.1,
+                    chunk_batch_size=2,
                 )
 
             output, sample_rate = sf.read(
@@ -179,6 +182,7 @@ class InferenceTests(unittest.TestCase):
             self.assertEqual(
                 set(model.input_lengths), {int(inference.SAMPLE_RATE * 0.5)}
             )
+            self.assertEqual(model.input_batch_sizes, [2, 2, 1])
             self.assertEqual(set(model.input_devices), {torch.device("cpu")})
             self.assertEqual(
                 hashlib.sha256(input_path.read_bytes()).hexdigest(), input_digest
@@ -223,6 +227,44 @@ class InferenceTests(unittest.TestCase):
                 chunk_samples=60,
                 overlap_samples=10,
             )
+
+    def test_chunking_rejects_invalid_batch_size(self):
+        audio = torch.zeros(1, 2, 100)
+        for batch_size in (0, -1, 1.5, True):
+            with self.subTest(batch_size=batch_size), self.assertRaisesRegex(
+                ValueError, "positive integer"
+            ):
+                inference.run_model(
+                    IdentityModel(),
+                    audio,
+                    torch.device("cpu"),
+                    chunk_samples=60,
+                    overlap_samples=10,
+                    chunk_batch_size=batch_size,
+                )
+
+    def test_invalid_batch_size_fails_before_checkpoint_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.wav"
+            sf.write(
+                input_path,
+                np.zeros((100, 2), dtype=np.float32),
+                inference.SAMPLE_RATE,
+            )
+
+            with mock.patch.object(inference, "hf_hub_download") as download:
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    inference.run_inference(
+                        input_path,
+                        root / "output.wav",
+                        inference.OFFICIAL_CHECKPOINT,
+                        "cpu",
+                        chunk_seconds=1,
+                        overlap_seconds=0,
+                        chunk_batch_size=0,
+                    )
+                download.assert_not_called()
 
     def test_refuses_to_overwrite_input(self):
         path = Path("same.wav")

@@ -101,6 +101,17 @@ def resolve_chunking(chunk_seconds, overlap_seconds):
     return chunk_samples, overlap_samples
 
 
+def validate_chunk_batch_size(chunk_batch_size):
+    """Require a fixed positive number of chunks per model forward pass."""
+    if (
+        isinstance(chunk_batch_size, bool)
+        or not isinstance(chunk_batch_size, int)
+        or chunk_batch_size < 1
+    ):
+        raise ValueError("Chunk batch size must be a positive integer.")
+    return chunk_batch_size
+
+
 def chunk_starts(total_samples, chunk_samples, overlap_samples):
     """Return starts that cover the signal without a redundant final chunk."""
     hop_samples = chunk_samples - overlap_samples
@@ -123,8 +134,17 @@ def crossfade_weights(length, overlap_samples, fade_in, fade_out, dtype):
     return weights.view(1, 1, -1)
 
 
-def run_model(model, audio, device, chunk_samples=None, overlap_samples=0):
-    """Run full-file or normalized overlap-add chunked inference."""
+def run_model(
+    model,
+    audio,
+    device,
+    chunk_samples=None,
+    overlap_samples=0,
+    chunk_batch_size=1,
+):
+    """Run full-file or batched normalized overlap-add chunked inference."""
+    chunk_batch_size = validate_chunk_batch_size(chunk_batch_size)
+
     total_samples = audio.shape[-1]
     if chunk_samples is None or total_samples <= chunk_samples:
         return model(audio.to(device)).detach().to("cpu")
@@ -133,33 +153,46 @@ def run_model(model, audio, device, chunk_samples=None, overlap_samples=0):
     weight_sum = torch.zeros((1, 1, total_samples), dtype=audio.dtype)
     starts = chunk_starts(total_samples, chunk_samples, overlap_samples)
 
-    for index, start in enumerate(starts):
-        end = min(start + chunk_samples, total_samples)
-        valid_samples = end - start
-        chunk = audio[..., start:end]
-        if valid_samples < chunk_samples:
-            chunk = F.pad(chunk, (0, chunk_samples - valid_samples))
+    for batch_start in range(0, len(starts), chunk_batch_size):
+        batch_starts = starts[batch_start : batch_start + chunk_batch_size]
+        batch_chunks = []
+        valid_lengths = []
+        for start in batch_starts:
+            end = min(start + chunk_samples, total_samples)
+            valid_samples = end - start
+            chunk = audio[..., start:end]
+            if valid_samples < chunk_samples:
+                chunk = F.pad(chunk, (0, chunk_samples - valid_samples))
+            batch_chunks.append(chunk)
+            valid_lengths.append(valid_samples)
 
-        chunk_output = model(chunk.to(device)).detach().to("cpu")
-        if chunk_output.ndim != 3 or chunk_output.shape[:2] != audio.shape[:2]:
+        chunk_batch = torch.cat(batch_chunks, dim=0)
+        batch_output = model(chunk_batch.to(device)).detach().to("cpu")
+        expected_shape = (len(batch_starts), audio.shape[1])
+        if batch_output.ndim != 3 or batch_output.shape[:2] != expected_shape:
             raise RuntimeError(
                 "Chunk output must preserve the input batch and channel dimensions."
             )
-        if chunk_output.shape[-1] < valid_samples:
+        if batch_output.shape[-1] < max(valid_lengths):
             raise RuntimeError(
                 "Chunk output is shorter than the corresponding input segment."
             )
-        chunk_output = chunk_output[..., :valid_samples]
 
-        weights = crossfade_weights(
-            valid_samples,
-            overlap_samples,
-            fade_in=index > 0,
-            fade_out=index < len(starts) - 1,
-            dtype=audio.dtype,
-        )
-        output_sum[..., start:end] += chunk_output * weights
-        weight_sum[..., start:end] += weights
+        for offset, (start, valid_samples) in enumerate(
+            zip(batch_starts, valid_lengths)
+        ):
+            end = start + valid_samples
+            chunk_output = batch_output[offset : offset + 1, ..., :valid_samples]
+            index = batch_start + offset
+            weights = crossfade_weights(
+                valid_samples,
+                overlap_samples,
+                fade_in=index > 0,
+                fade_out=index < len(starts) - 1,
+                dtype=audio.dtype,
+            )
+            output_sum[..., start:end] += chunk_output * weights
+            weight_sum[..., start:end] += weights
 
     if torch.any(weight_sum <= 0):
         raise RuntimeError("Chunk overlap-add left uncovered output samples.")
@@ -173,6 +206,7 @@ def run_inference(
     requested_device="auto",
     chunk_seconds=None,
     overlap_seconds=1.0,
+    chunk_batch_size=1,
 ):
     input_path = Path(input_wav)
     output_path = Path(output_wav)
@@ -184,6 +218,7 @@ def run_inference(
     chunk_samples, overlap_samples = resolve_chunking(
         chunk_seconds, overlap_seconds
     )
+    chunk_batch_size = validate_chunk_batch_size(chunk_batch_size)
     device = select_device(requested_device)
     test_data, sample_rate = load_audio(input_path)
     checkpoint_path = resolve_checkpoint(checkpoint)
@@ -202,6 +237,7 @@ def run_inference(
             device,
             chunk_samples=chunk_samples,
             overlap_samples=overlap_samples,
+            chunk_batch_size=chunk_batch_size,
         )
     save_audio(output_path, output, sample_rate)
     return device
@@ -238,6 +274,12 @@ def main():
         default=1.0,
         help="Chunk crossfade duration (default: 1.0; at most half a chunk)",
     )
+    parser.add_argument(
+        "--chunk-batch-size",
+        type=int,
+        default=1,
+        help="Chunks per model forward pass (default: 1; higher uses more memory)",
+    )
     args = parser.parse_args()
 
     device = run_inference(
@@ -247,6 +289,7 @@ def main():
         args.device,
         args.chunk_seconds,
         args.overlap_seconds,
+        args.chunk_batch_size,
     )
     print(f"Inference completed on {device}: {args.out_wav}")
 
