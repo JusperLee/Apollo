@@ -102,6 +102,7 @@ python inference.py \
   --device=auto \
   --chunk-seconds=6 \
   --overlap-seconds=1 \
+  --chunk-pad-seconds=1 \
   --chunk-batch-size=2
 ```
 
@@ -109,7 +110,10 @@ python inference.py \
 pass. Its default is `1` for minimum accelerator memory; larger values may
 improve throughput on some devices but use more memory and should be measured
 on the target backend. Normalized linear crossfades preserve the input frame
-count, and the overlap must be no more than half the chunk duration. Chunking
+count, and the overlap must be no more than half the chunk duration.
+`--chunk-pad-seconds` infers each chunk with that much surrounding audio per
+side and discards it from the output; with its default of `0` the listener may
+hear artifacts at the chunk seams. Chunking
 can change the result relative to full-file inference because the model sees
 less context, so important material should still receive a listening check. See
 [Apple Silicon macOS notes](MACOS_ARM64.md) for a tested MPS setup and current

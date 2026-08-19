@@ -35,6 +35,29 @@ class ShortOutputModel(IdentityModel):
         return audio[..., :-1]
 
 
+class DegradedEdgesModel(IdentityModel):
+    """Identity, except both edges of every input come back wrong.
+
+    This mimics the real model, whose output within ~0.5 s of either edge of
+    its input differs from a well-placed prediction — mildly at the start,
+    strongly at the end. The marker is infinity so nothing wrong can hide:
+    with enough chunk padding it is sliced away before the crossfade
+    arithmetic, and with none it floods through the crossfades.
+    """
+
+    MARKER = float("inf")
+
+    def __init__(self, degraded_samples):
+        super().__init__()
+        self.degraded_samples = degraded_samples
+
+    def forward(self, audio):
+        audio = super().forward(audio).clone()
+        audio[..., : self.degraded_samples] = self.MARKER
+        audio[..., -self.degraded_samples :] = self.MARKER
+        return audio
+
+
 class DeviceSelectionTests(unittest.TestCase):
     @mock.patch.object(torch.backends.mps, "is_available", return_value=True)
     @mock.patch.object(torch.cuda, "is_available", return_value=True)
@@ -187,6 +210,91 @@ class InferenceTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(input_path.read_bytes()).hexdigest(), input_digest
             )
+
+    def test_chunk_padding_discards_degraded_input_edges(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.wav"
+            output_path = root / "output.wav"
+            checkpoint_path = root / "checkpoint.bin"
+            checkpoint_path.touch()
+
+            sample_count = int(inference.SAMPLE_RATE * 1.8)
+            samples = np.linspace(-0.5, 0.5, sample_count, dtype=np.float32)
+            stereo = np.stack((samples, -samples), axis=1)
+            sf.write(input_path, stereo, inference.SAMPLE_RATE, subtype="FLOAT")
+
+            # 0.5 s chunks, 0.1 s overlap. The model degrades 0.05 s at
+            # each edge of its input, and chunk padding of the same 0.05 s
+            # discards exactly those samples.
+            degraded_seconds = 0.05
+            degraded_samples = int(degraded_seconds * inference.SAMPLE_RATE)
+            model = DegradedEdgesModel(
+                degraded_samples=degraded_samples
+            )
+            with mock.patch.object(
+                inference.look2hear.models.BaseModel,
+                "from_pretrain",
+                return_value=model,
+            ):
+                inference.run_inference(
+                    input_path,
+                    output_path,
+                    checkpoint_path,
+                    requested_device="cpu",
+                    chunk_seconds=0.5,
+                    overlap_seconds=0.1,
+                    chunk_pad_seconds=degraded_seconds,
+                )
+
+            output, _ = sf.read(output_path, dtype="float32", always_2d=True)
+            # Padding is real neighboring audio, so the first chunk starts
+            # at the file start and its degraded head is kept because there
+            # is nothing before the file to pad with. The check therefore
+            # starts after the file's first degraded_seconds. The same
+            # symmetry applies at the end of the file.
+            np.testing.assert_allclose(
+                output[degraded_samples:-degraded_samples],
+                stereo[degraded_samples:-degraded_samples],
+                rtol=0,
+                atol=1e-6,
+            )
+
+    def test_unpadded_chunks_leak_degraded_edges(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.wav"
+            output_path = root / "output.wav"
+            checkpoint_path = root / "checkpoint.bin"
+            checkpoint_path.touch()
+
+            sample_count = int(inference.SAMPLE_RATE * 1.8)
+            samples = np.linspace(-0.5, 0.5, sample_count, dtype=np.float32)
+            stereo = np.stack((samples, -samples), axis=1)
+            sf.write(input_path, stereo, inference.SAMPLE_RATE, subtype="FLOAT")
+
+            # The same scenario with chunk padding off: the degraded edges
+            # reach the output through the overlap crossfades.
+            model = DegradedEdgesModel(
+                degraded_samples=int(0.05 * inference.SAMPLE_RATE)
+            )
+            with mock.patch.object(
+                inference.look2hear.models.BaseModel,
+                "from_pretrain",
+                return_value=model,
+            ):
+                inference.run_inference(
+                    input_path,
+                    output_path,
+                    checkpoint_path,
+                    requested_device="cpu",
+                    chunk_seconds=0.5,
+                    overlap_seconds=0.1,
+                    chunk_pad_seconds=0.0,
+                )
+
+            output, _ = sf.read(output_path, dtype="float32", always_2d=True)
+            self.assertFalse(np.isfinite(output).all())
 
     def test_short_input_uses_original_full_file_path(self):
         audio = torch.zeros(1, 2, inference.SAMPLE_RATE // 4)

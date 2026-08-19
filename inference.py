@@ -83,22 +83,25 @@ def save_audio(file_path, audio, sample_rate):
     sf.write(output_path, audio, sample_rate, subtype="FLOAT")
 
 
-def resolve_chunking(chunk_seconds, overlap_seconds):
+def resolve_chunking(chunk_seconds, overlap_seconds, chunk_pad_seconds=0.0):
     """Convert optional chunk settings to samples and validate crossfades."""
     if chunk_seconds is None:
-        return None, 0
+        return None, 0, 0
     if not np.isfinite(chunk_seconds) or chunk_seconds <= 0:
         raise ValueError("Chunk duration must be a positive finite number.")
     if not np.isfinite(overlap_seconds) or overlap_seconds < 0:
         raise ValueError("Overlap duration must be a non-negative finite number.")
+    if not np.isfinite(chunk_pad_seconds) or chunk_pad_seconds < 0:
+        raise ValueError("Chunk pad duration must be a non-negative finite number.")
 
     chunk_samples = int(round(chunk_seconds * SAMPLE_RATE))
     overlap_samples = int(round(overlap_seconds * SAMPLE_RATE))
+    chunk_pad_samples = int(round(chunk_pad_seconds * SAMPLE_RATE))
     if chunk_samples < 1:
         raise ValueError("Chunk duration is shorter than one sample.")
     if overlap_samples * 2 > chunk_samples:
         raise ValueError("Overlap duration must not exceed half the chunk duration.")
-    return chunk_samples, overlap_samples
+    return chunk_samples, overlap_samples, chunk_pad_samples
 
 
 def validate_chunk_batch_size(chunk_batch_size):
@@ -141,8 +144,14 @@ def run_model(
     chunk_samples=None,
     overlap_samples=0,
     chunk_batch_size=1,
+    chunk_pad_samples=0,
 ):
-    """Run full-file or batched normalized overlap-add chunked inference."""
+    """Run full-file or batched normalized overlap-add chunked inference.
+
+    Each chunk is inferred with `chunk_pad_samples` of surrounding audio per
+    side, discarded from the output, because model output is wrong near the
+    edges of its input.
+    """
     chunk_batch_size = validate_chunk_batch_size(chunk_batch_size)
 
     total_samples = audio.shape[-1]
@@ -152,6 +161,7 @@ def run_model(
     output_sum = torch.zeros_like(audio, device="cpu")
     weight_sum = torch.zeros((1, 1, total_samples), dtype=audio.dtype)
     starts = chunk_starts(total_samples, chunk_samples, overlap_samples)
+    padded_chunk_samples = chunk_samples + 2 * chunk_pad_samples
 
     for batch_start in range(0, len(starts), chunk_batch_size):
         batch_starts = starts[batch_start : batch_start + chunk_batch_size]
@@ -160,9 +170,16 @@ def run_model(
         for start in batch_starts:
             end = min(start + chunk_samples, total_samples)
             valid_samples = end - start
-            chunk = audio[..., start:end]
-            if valid_samples < chunk_samples:
-                chunk = F.pad(chunk, (0, chunk_samples - valid_samples))
+            # Real audio pads each side. The file's own edges take none:
+            # the first padded chunk begins at the file start and the last
+            # ends at the file end, extending further left instead —
+            # padding with silence measurably degrades the output near it.
+            padded_start = start - chunk_pad_samples if start else 0
+            if chunk_pad_samples and end == total_samples:
+                padded_start = max(0, total_samples - padded_chunk_samples)
+            chunk = audio[..., padded_start : padded_start + padded_chunk_samples]
+            if chunk.shape[-1] < padded_chunk_samples:
+                chunk = F.pad(chunk, (0, padded_chunk_samples - chunk.shape[-1]))
             batch_chunks.append(chunk)
             valid_lengths.append(valid_samples)
 
@@ -173,7 +190,7 @@ def run_model(
             raise RuntimeError(
                 "Chunk output must preserve the input batch and channel dimensions."
             )
-        if batch_output.shape[-1] < max(valid_lengths):
+        if batch_output.shape[-1] < padded_chunk_samples:
             raise RuntimeError(
                 "Chunk output is shorter than the corresponding input segment."
             )
@@ -182,7 +199,12 @@ def run_model(
             zip(batch_starts, valid_lengths)
         ):
             end = start + valid_samples
-            chunk_output = batch_output[offset : offset + 1, ..., :valid_samples]
+            valid_start = chunk_pad_samples if start else 0
+            if chunk_pad_samples and end == total_samples:
+                valid_start = start - max(0, total_samples - padded_chunk_samples)
+            chunk_output = batch_output[
+                offset : offset + 1, ..., valid_start : valid_start + valid_samples
+            ]
             index = batch_start + offset
             weights = crossfade_weights(
                 valid_samples,
@@ -207,6 +229,7 @@ def run_inference(
     chunk_seconds=None,
     overlap_seconds=1.0,
     chunk_batch_size=1,
+    chunk_pad_seconds=0.0,
 ):
     input_path = Path(input_wav)
     output_path = Path(output_wav)
@@ -215,8 +238,8 @@ def run_inference(
     if output_path.exists() and input_path.samefile(output_path):
         raise ValueError("Input and output paths must not reference the same file.")
 
-    chunk_samples, overlap_samples = resolve_chunking(
-        chunk_seconds, overlap_seconds
+    chunk_samples, overlap_samples, chunk_pad_samples = resolve_chunking(
+        chunk_seconds, overlap_seconds, chunk_pad_seconds
     )
     chunk_batch_size = validate_chunk_batch_size(chunk_batch_size)
     device = select_device(requested_device)
@@ -238,6 +261,7 @@ def run_inference(
             chunk_samples=chunk_samples,
             overlap_samples=overlap_samples,
             chunk_batch_size=chunk_batch_size,
+            chunk_pad_samples=chunk_pad_samples,
         )
     save_audio(output_path, output, sample_rate)
     return device
@@ -275,6 +299,12 @@ def main():
         help="Chunk crossfade duration (default: 1.0; at most half a chunk)",
     )
     parser.add_argument(
+        "--chunk-pad-seconds",
+        type=float,
+        default=0.0,
+        help="Audio inferred beyond each chunk edge and discarded (default: 0; 1.0 gives clean seams)",
+    )
+    parser.add_argument(
         "--chunk-batch-size",
         type=int,
         default=1,
@@ -290,6 +320,7 @@ def main():
         args.chunk_seconds,
         args.overlap_seconds,
         args.chunk_batch_size,
+        args.chunk_pad_seconds,
     )
     print(f"Inference completed on {device}: {args.out_wav}")
 
