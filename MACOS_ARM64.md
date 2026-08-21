@@ -40,6 +40,17 @@ python inference.py \
   --chunk-batch-size=2
 ```
 
+Model output is wrong near the edges of whatever it is given — worst at the
+end, where the model runs out of audio. `--chunk-pad-seconds` infers each
+chunk with that much surrounding audio on each side and discards it from the
+output, keeping those wrong edges away from chunk boundaries. The padding is
+real neighboring audio, and the file's own edges take none: the first padded
+chunk begins at the file start and the last ends at the file end, extending
+further left instead, so both file edges come out as an unchunked
+pass would produce them. The default of 0 keeps the previous output
+exactly; 1.0 is past the measured wrong-edge extent (about 0.5 s) and gives
+clean seams. Each forward pass grows from chunk to chunk plus twice the pad.
+
 `--chunk-batch-size` controls how many chunks are transferred and processed in
 one model forward pass. The default of `1` minimizes accelerator memory; larger
 values keep memory bounded by a fixed batch but may trade additional memory for
