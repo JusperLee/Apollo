@@ -19,7 +19,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy==1.26.4 huggingface-hub==1.27.0 soundfile==0.14.0
+          python -m pip install numpy==1.26.4 scipy==1.13.1 huggingface-hub==1.27.0 soundfile==0.14.0
       - name: Compile and run unit tests
         run: |
           python -m py_compile inference.py tests/test_inference.py

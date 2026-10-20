@@ -1,4 +1,5 @@
 import argparse
+import importlib
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
@@ -221,6 +222,20 @@ def run_model(
     return output_sum / weight_sum
 
 
+def load_texture_processor():
+    """Check optional dependencies before checkpoint download/model execution."""
+    try:
+        importlib.import_module("scipy")
+        return importlib.import_module("texture_softening").soften_texture
+    except ModuleNotFoundError as exc:
+        if exc.name == "scipy" or (exc.name or "").startswith("scipy."):
+            raise RuntimeError(
+                "Texture softening requires SciPy. Install scipy>=1.13,<2 "
+                "or use --texture-reduction-db=0. No model was loaded."
+            ) from exc
+        raise
+
+
 def run_inference(
     input_wav,
     output_wav,
@@ -230,7 +245,10 @@ def run_inference(
     overlap_seconds=1.0,
     chunk_batch_size=1,
     chunk_pad_seconds=0.0,
+    texture_reduction_db=0.0,
 ):
+    if not np.isfinite(texture_reduction_db) or not 0 <= texture_reduction_db <= 3:
+        raise ValueError("Texture reduction must be finite and between 0 and 3 dB.")
     input_path = Path(input_wav)
     output_path = Path(output_wav)
     if input_path.resolve() == output_path.resolve():
@@ -242,8 +260,14 @@ def run_inference(
         chunk_seconds, overlap_seconds, chunk_pad_seconds
     )
     chunk_batch_size = validate_chunk_batch_size(chunk_batch_size)
+    texture_processor = load_texture_processor() if texture_reduction_db else None
     device = select_device(requested_device)
     test_data, sample_rate = load_audio(input_path)
+    if texture_processor is not None and test_data.shape[-1] < 2048:
+        raise ValueError(
+            "Texture softening requires at least 2048 frames; "
+            "use --texture-reduction-db=0 for shorter clips. No model was loaded."
+        )
     checkpoint_path = resolve_checkpoint(checkpoint)
 
     model = look2hear.models.BaseModel.from_pretrain(
@@ -263,6 +287,11 @@ def run_inference(
             chunk_batch_size=chunk_batch_size,
             chunk_pad_samples=chunk_pad_samples,
         )
+    if texture_reduction_db:
+        softened, _ = texture_processor(
+            output.squeeze(0).numpy(), sample_rate, texture_reduction_db
+        )
+        output = torch.from_numpy(softened).unsqueeze(0)
     save_audio(output_path, output, sample_rate)
     return device
 
@@ -310,6 +339,10 @@ def main():
         default=1,
         help="Chunks per model forward pass (default: 1; higher uses more memory)",
     )
+    parser.add_argument(
+        "--texture-reduction-db", type=float, default=0.0,
+        help="Experimental texture softening cap, 0-3 dB (default: 0, disabled)",
+    )
     args = parser.parse_args()
 
     device = run_inference(
@@ -321,6 +354,7 @@ def main():
         args.overlap_seconds,
         args.chunk_batch_size,
         args.chunk_pad_seconds,
+        args.texture_reduction_db,
     )
     print(f"Inference completed on {device}: {args.out_wav}")
 
